@@ -2,6 +2,9 @@ const router = require('express').Router();
 const { body, validationResult } = require('express-validator');
 const User = require('../db/User');
 const bcrypt = require('bcrypt');
+const path = require('path');
+const fs = require('fs');
+const JWT = require('jsonwebtoken');
 
 router.get('/', (req, res) => {
   res.send('Hello from auth.js');
@@ -35,7 +38,49 @@ router.post(
 
     // DBにユーザーを追加
     User.push({ email, password: hashedPassword });
-    res.status(201).json({ message: 'User created successfully' });
+
+    fs.writeFileSync(
+      path.join(__dirname, '../db/User.js'),
+      `module.exports = ${JSON.stringify(User, null, 2)}`
+    );
+
+    // JWTの発行
+
+    const token = JWT.sign({ email }, 'JWT_SECRET', {
+      expiresIn: '24h',
+    });
+
+    res.status(201).json({ message: 'User created successfully', token: token });
   }
 );
+
+// ログイン
+
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  const user = User.find((user) => user.email === email);
+  if (!user) {
+    return res.status(400).json({ message: 'User not found' });
+  }
+
+  // パスワードの照合
+  const isMatch = await bcrypt.compare(password, user.password);
+
+  if (!isMatch) {
+    return res.status(400).json({ message: 'password is wrong' });
+  }
+
+  const token = JWT.sign({ email }, 'JWT_SECRET', {
+    expiresIn: '24h',
+  });
+
+  res.status(200).json({ message: 'Login successful', token: token });
+});
+
+// DBのユーザー情報を取得
+router.get('/users', (req, res) => {
+  res.json(User);
+});
+
 module.exports = router;
